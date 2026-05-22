@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local environment and build artifacts
+mcp-workbench/
+data/
+.DS_Store

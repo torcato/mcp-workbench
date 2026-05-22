@@ -316,6 +316,39 @@ profiles:
     system_prompt: |
       You are a pragmatic assistant.
       Use tools when useful.
+```
+
+---
+
+# Phase 1 Bootstrap
+
+## Run locally
+
+1. Install dependencies:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+2. Start the app:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+3. Verify health:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+## Tests
+
+```bash
+python -m pip install -e .[test]
+pytest
+```
 
   coding:
     name: Senior Backend Engineer
