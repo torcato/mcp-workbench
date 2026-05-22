@@ -52,7 +52,7 @@ def build_initial_messages(prompt_manager: PromptManager, profile_name: str) -> 
 
 def create_provider(settings: AppSettings) -> LLMProvider:
     if not settings.llm_api_key:
-        raise RuntimeError("MCP_WORKBENCH_LLM_API_KEY is required to use chat")
+        raise RuntimeError("LLM_API_KEY is required to use chat")
 
     return OpenAIProvider(
         api_key=settings.llm_api_key,

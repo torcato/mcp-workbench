@@ -425,9 +425,9 @@ Create:
 Example:
 
 ```env
-MCP_WORKBENCH_LLM_API_KEY=your-key
-MCP_WORKBENCH_LLM_BASE_URL=https://api.openai.com/v1
-MCP_WORKBENCH_LLM_DEFAULT_MODEL=gpt-3.5-turbo
+LLM_API_KEY=your-key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-3.5-turbo
 ```
 
 ---

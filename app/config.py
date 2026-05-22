@@ -16,10 +16,22 @@ class AppSettings(BaseSettings):
     log_level: str = "INFO"
     allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
     database_url: str = "sqlite:///./data/mcp_workbench.db"
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_api_key: str | None = None
-    llm_default_model: str = "gpt-3.5-turbo"
-    llm_models: list[str] = Field(default_factory=lambda: ["gpt-3.5-turbo"])
+    llm_base_url: str = Field(
+        "https://api.openai.com/v1",
+        validation_alias="LLM_BASE_URL",
+    )
+    llm_api_key: str | None = Field(
+        None,
+        validation_alias="LLM_API_KEY",
+    )
+    llm_default_model: str = Field(
+        "gpt-3.5-turbo",
+        validation_alias="LLM_MODEL",
+    )
+    llm_models: list[str] = Field(
+        default_factory=lambda: ["gpt-3.5-turbo"],
+        validation_alias="LLM_MODELS",
+    )
     prompt_profiles_path: str = "app/prompts/profiles.yaml"
     default_prompt_profile: str = "default"
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
@@ -28,6 +40,7 @@ class AppSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="MCP_WORKBENCH_",
+        populate_by_name=True,
     )
 
 
