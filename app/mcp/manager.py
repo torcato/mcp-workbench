@@ -4,13 +4,13 @@ from collections import Counter
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.types import Implementation, Prompt, Resource, ServerCapabilities, Tool
+from mcp.types import CallToolResult, Implementation, Prompt, Resource, ServerCapabilities, Tool
 
 from app.mcp.models import MCPServerConfig, MCPTransport
 
@@ -46,6 +46,9 @@ class MCPManager:
 
     def list_servers(self) -> list[str]:
         return list(self._servers.keys())
+
+    def list_connected_servers(self) -> list[str]:
+        return list(self._connections.keys())
 
     def get_connection(self, name: str) -> MCPConnection:
         if name not in self._connections:
@@ -114,6 +117,9 @@ class MCPManager:
     async def list_prompts(self, name: str) -> list[Prompt]:
         result = await self.get_connection(name).session.list_prompts()
         return result.prompts
+
+    async def call_tool(self, server_name: str, tool_name: str, arguments: dict[str, Any] | None = None) -> CallToolResult:
+        return await self.get_connection(server_name).session.call_tool(tool_name, arguments=arguments or {})
 
     @asynccontextmanager
     async def _transport_context(self, config: MCPServerConfig) -> AsyncGenerator:

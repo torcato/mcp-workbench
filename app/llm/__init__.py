@@ -1,4 +1,4 @@
-from app.llm.base import ChatMessage, LLMProvider
+from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
 from app.llm.openai import OpenAIProvider
 
-__all__ = ["ChatMessage", "LLMProvider", "OpenAIProvider"]
+__all__ = ["ChatCompletion", "ChatMessage", "LLMProvider", "OpenAIProvider", "ToolCall", "ToolDefinition"]
