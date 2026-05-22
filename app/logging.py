@@ -1,12 +1,12 @@
 import logging
 
-from pythonjsonlogger.json import JsonFormatter
+from pythonjsonlogger import jsonlogger
 
 from app.config import AppSettings
 
 
 def configure_logging(settings: AppSettings) -> None:
-    formatter = JsonFormatter(
+    formatter = jsonlogger.JsonFormatter(
         fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
         rename_fields={"levelname": "level", "message": "msg", "asctime": "timestamp"},
     )

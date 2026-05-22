@@ -19,12 +19,17 @@ class PromptManager:
         if not self.profiles_path.exists():
             raise FileNotFoundError(f"Prompt profiles file not found: {self.profiles_path}")
 
-        raw = yaml.safe_load(self.profiles_path.read_text(encoding="utf-8"))
+        try:
+            raw = yaml.safe_load(self.profiles_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid prompt profiles YAML: {self.profiles_path}") from exc
+
         if raw is None:
             raw = {}
         if not isinstance(raw, dict):
             raise ValueError("Prompt profiles file must contain a YAML mapping")
 
+        raw = dict(raw)
         if "default_profile" not in raw:
             raw["default_profile"] = self.default_profile
 

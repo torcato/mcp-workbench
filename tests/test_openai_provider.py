@@ -11,6 +11,7 @@ def test_openai_provider_chat_returns_text() -> None:
         assert request.headers["Authorization"] == "Bearer test-key"
         payload = json.loads(request.content.decode("utf-8"))
         assert payload["model"] == "gpt-4"
+        assert payload["messages"] == [{"role": "user", "content": "Hi"}]
         return httpx.Response(
             200,
             json={

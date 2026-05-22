@@ -20,7 +20,11 @@ class AppSettings(BaseSettings):
     prompt_profiles_path: str = "app/prompts/profiles.yaml"
     default_prompt_profile: str = "default"
 
-    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="MCP_WORKBENCH_",
+    )
 
 
 @lru_cache()

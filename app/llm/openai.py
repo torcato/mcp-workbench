@@ -36,7 +36,7 @@ class OpenAIProvider(LLMProvider):
     def _payload(self, messages: list[ChatMessage], model: str | None, temperature: float, stream: bool) -> dict:
         return {
             "model": model or self.default_model,
-            "messages": [message.model_dump() for message in messages],
+            "messages": [message.model_dump(exclude_none=True) for message in messages],
             "temperature": temperature,
             "stream": stream,
         }

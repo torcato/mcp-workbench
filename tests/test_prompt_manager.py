@@ -77,3 +77,46 @@ def test_invalid_yaml_raises(tmp_path: Path) -> None:
     manager = PromptManager(profiles_path=source)
     with pytest.raises(ValueError):
         manager.load_profiles()
+
+
+def test_default_profile_must_exist(tmp_path: Path) -> None:
+    source = tmp_path / "profiles.yaml"
+    source.write_text(
+        """default_profile: missing
+profiles:
+  default:
+    name: Default
+    system_prompt: |
+      Default.
+""",
+        encoding="utf-8",
+    )
+
+    manager = PromptManager(profiles_path=source)
+    with pytest.raises(ValueError, match="default_profile must reference an existing profile"):
+        manager.load_profiles()
+
+
+def test_profile_requires_system_prompt_text(tmp_path: Path) -> None:
+    source = tmp_path / "profiles.yaml"
+    source.write_text(
+        """profiles:
+  default:
+    name: Default
+    system_prompt: "   "
+""",
+        encoding="utf-8",
+    )
+
+    manager = PromptManager(profiles_path=source)
+    with pytest.raises(ValueError, match="must not be empty"):
+        manager.load_profiles()
+
+
+def test_malformed_yaml_raises_value_error(tmp_path: Path) -> None:
+    source = tmp_path / "profiles.yaml"
+    source.write_text("profiles: [", encoding="utf-8")
+
+    manager = PromptManager(profiles_path=source)
+    with pytest.raises(ValueError, match="Invalid prompt profiles YAML"):
+        manager.load_profiles()
