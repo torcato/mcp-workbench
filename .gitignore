@@ -217,6 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Chainlit local runtime files
+.chainlit/
+
 # Local environment and build artifacts
 mcp-workbench/
 data/

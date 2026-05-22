@@ -4,6 +4,8 @@ from pydantic import Field
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
+from app.mcp.models import MCPServerConfig
+
 
 class AppSettings(BaseSettings):
     app_name: str = "MCP Workbench"
@@ -17,8 +19,10 @@ class AppSettings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str | None = None
     llm_default_model: str = "gpt-3.5-turbo"
+    llm_models: list[str] = Field(default_factory=lambda: ["gpt-3.5-turbo"])
     prompt_profiles_path: str = "app/prompts/profiles.yaml"
     default_prompt_profile: str = "default"
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
 
     model_config = ConfigDict(
         env_file=".env",

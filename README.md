@@ -409,7 +409,7 @@ source .venv/bin/activate
 ## Install
 
 ```bash
-pip install -r requirements.txt
+pip install -e .[test]
 ```
 
 ---
@@ -425,9 +425,9 @@ Create:
 Example:
 
 ```env
-OPENAI_API_KEY=your-key
-DATABASE_URL=sqlite:///./app.db
-APP_SECRET_KEY=change-me
+MCP_WORKBENCH_LLM_API_KEY=your-key
+MCP_WORKBENCH_LLM_BASE_URL=https://api.openai.com/v1
+MCP_WORKBENCH_LLM_DEFAULT_MODEL=gpt-3.5-turbo
 ```
 
 ---
