@@ -50,6 +50,12 @@ def build_initial_messages(prompt_manager: PromptManager, profile_name: str) -> 
     return prompt_manager.compose_prompt(profile_name=profile_name)
 
 
+def resolve_initial_mcp_server(settings: AppSettings, options: UIOptions) -> str:
+    if settings.default_mcp_server and settings.default_mcp_server in options.mcp_servers:
+        return settings.default_mcp_server
+    return NO_MCP_SERVER
+
+
 def create_provider(settings: AppSettings) -> LLMProvider:
     if not settings.llm_api_key:
         raise RuntimeError("LLM_API_KEY is required to use chat")

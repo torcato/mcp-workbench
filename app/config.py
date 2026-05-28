@@ -34,6 +34,7 @@ class AppSettings(BaseSettings):
     )
     prompt_profiles_path: str = "app/prompts/profiles.yaml"
     default_prompt_profile: str = "default"
+    default_mcp_server: str | None = None
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
 
     model_config = ConfigDict(

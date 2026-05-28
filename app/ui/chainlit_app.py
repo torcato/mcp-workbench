@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import inspect
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import chainlit as cl
 from chainlit.input_widget import Select
@@ -16,6 +22,7 @@ from app.ui.runtime import (
     build_initial_messages,
     build_ui_options,
     create_provider,
+    resolve_initial_mcp_server,
     run_chat_turn,
 )
 
@@ -34,12 +41,16 @@ class ChainlitTokenStream:
 
 
 class ChainlitToolExecutionStream:
+    def __init__(self, parent_id: str | None = None) -> None:
+        self.parent_id = parent_id
+
     async def send_execution(self, execution: MCPToolExecution) -> None:
         status = "allowed" if execution.allowed else "blocked"
         name = f"{execution.server_name}/{execution.tool_name}" if execution.server_name else execution.tool_name
         async with cl.Step(
             name=f"{name} ({status})",
             type="tool",
+            parent_id=self.parent_id,
             default_open=False,
             show_input="json",
         ) as step:
@@ -61,6 +72,14 @@ async def on_chat_start() -> None:
         if settings.default_prompt_profile in options.prompt_profiles
         else options.prompt_profiles[0]
     )
+    initial_mcp_server = resolve_initial_mcp_server(settings, options)
+
+    if initial_mcp_server != NO_MCP_SERVER:
+        try:
+            await mcp_manager.connect(initial_mcp_server)
+        except Exception as exc:
+            initial_mcp_server = NO_MCP_SERVER
+            await cl.Message(content=f"Default MCP server connection failed: {exc}").send()
 
     cl.user_session.set(PROMPT_MANAGER_KEY, prompt_manager)
     cl.user_session.set(MCP_MANAGER_KEY, mcp_manager)
@@ -69,7 +88,7 @@ async def on_chat_start() -> None:
         ChatSessionState(
             model=initial_model,
             prompt_profile=initial_profile,
-            mcp_server=NO_MCP_SERVER,
+            mcp_server=initial_mcp_server,
             messages=build_initial_messages(prompt_manager, initial_profile),
         ),
     )
@@ -92,7 +111,7 @@ async def on_chat_start() -> None:
                 id="mcp_server",
                 label="MCP server",
                 values=options.mcp_servers,
-                initial_index=0,
+                initial_index=options.mcp_servers.index(initial_mcp_server),
             ),
         ]
     ).send()
@@ -127,7 +146,7 @@ async def on_message(message: cl.Message) -> None:
 
     try:
         provider = create_provider(settings)
-        tool_stream = ChainlitToolExecutionStream()
+        tool_stream = ChainlitToolExecutionStream(parent_id=response.id)
         turn_kwargs = {
             "provider": provider,
             "mcp_manager": mcp_manager,

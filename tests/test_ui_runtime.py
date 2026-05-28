@@ -16,6 +16,7 @@ from app.ui.runtime import (
     ChatSessionState,
     apply_session_settings,
     build_ui_options,
+    resolve_initial_mcp_server,
     run_chat_turn,
 )
 
@@ -143,6 +144,38 @@ def test_build_ui_options_includes_models_profiles_and_mcp_servers(tmp_path: Pat
     assert options.models == ["gpt-4.1", "local-model"]
     assert options.prompt_profiles == ["default", "coding"]
     assert options.mcp_servers == [NO_MCP_SERVER, "local"]
+
+
+def test_resolve_initial_mcp_server_uses_configured_default(tmp_path: Path) -> None:
+    profiles_path = write_profiles(tmp_path)
+    settings = AppSettings(
+        default_mcp_server="local",
+        prompt_profiles_path=str(profiles_path),
+        mcp_servers=[
+            MCPServerConfig(name="local", transport=MCPTransport.stdio, command="mock-server")
+        ],
+    )
+    prompt_manager = PromptManager(profiles_path)
+    mcp_manager = MCPManager(settings.mcp_servers)
+    options = build_ui_options(settings, prompt_manager, mcp_manager)
+
+    assert resolve_initial_mcp_server(settings, options) == "local"
+
+
+def test_resolve_initial_mcp_server_falls_back_to_none_for_unknown_default(tmp_path: Path) -> None:
+    profiles_path = write_profiles(tmp_path)
+    settings = AppSettings(
+        default_mcp_server="missing",
+        prompt_profiles_path=str(profiles_path),
+        mcp_servers=[
+            MCPServerConfig(name="local", transport=MCPTransport.stdio, command="mock-server")
+        ],
+    )
+    prompt_manager = PromptManager(profiles_path)
+    mcp_manager = MCPManager(settings.mcp_servers)
+    options = build_ui_options(settings, prompt_manager, mcp_manager)
+
+    assert resolve_initial_mcp_server(settings, options) == NO_MCP_SERVER
 
 
 @pytest.mark.anyio
