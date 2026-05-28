@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-import chainlit as cl
+import inspect
 
+import chainlit as cl
+from chainlit.input_widget import Select
+
+from app.chat.tool_loop import MCPToolExecution
 from app.config import get_settings
 from app.mcp.manager import MCPManager
 from app.prompts.manager import PromptManager
@@ -27,6 +31,21 @@ class ChainlitTokenStream:
 
     async def send_token(self, token: str) -> None:
         await self.message.stream_token(token)
+
+
+class ChainlitToolExecutionStream:
+    async def send_execution(self, execution: MCPToolExecution) -> None:
+        status = "allowed" if execution.allowed else "blocked"
+        name = f"{execution.server_name}/{execution.tool_name}" if execution.server_name else execution.tool_name
+        async with cl.Step(
+            name=f"{name} ({status})",
+            type="tool",
+            default_open=False,
+            show_input="json",
+        ) as step:
+            step.input = execution.arguments
+            step.output = execution.result
+            step.is_error = not execution.allowed or execution.result.startswith("Tool returned an error:")
 
 
 @cl.on_chat_start
@@ -57,19 +76,19 @@ async def on_chat_start() -> None:
 
     await cl.ChatSettings(
         [
-            cl.Select(
+            Select(
                 id="model",
                 label="Model",
                 values=options.models,
                 initial_index=options.models.index(initial_model),
             ),
-            cl.Select(
+            Select(
                 id="prompt_profile",
                 label="Prompt profile",
                 values=options.prompt_profiles,
                 initial_index=options.prompt_profiles.index(initial_profile),
             ),
-            cl.Select(
+            Select(
                 id="mcp_server",
                 label="MCP server",
                 values=options.mcp_servers,
@@ -85,13 +104,17 @@ async def on_settings_update(settings_update: dict) -> None:
     mcp_manager = cl.user_session.get(MCP_MANAGER_KEY)
     state = cl.user_session.get(STATE_KEY)
 
-    state = await apply_session_settings(
-        state,
-        settings_update,
-        prompt_manager=prompt_manager,
-        mcp_manager=mcp_manager,
-    )
-    cl.user_session.set(STATE_KEY, state)
+    try:
+        state = await apply_session_settings(
+            state,
+            settings_update,
+            prompt_manager=prompt_manager,
+            mcp_manager=mcp_manager,
+        )
+    except Exception as exc:
+        await cl.Message(content=f"Settings update failed: {exc}").send()
+    else:
+        cl.user_session.set(STATE_KEY, state)
 
 
 @cl.on_message
@@ -104,13 +127,16 @@ async def on_message(message: cl.Message) -> None:
 
     try:
         provider = create_provider(settings)
-        state = await run_chat_turn(
-            state,
-            message.content,
-            provider=provider,
-            mcp_manager=mcp_manager,
-            token_stream=ChainlitTokenStream(response),
-        )
+        tool_stream = ChainlitToolExecutionStream()
+        turn_kwargs = {
+            "provider": provider,
+            "mcp_manager": mcp_manager,
+            "token_stream": ChainlitTokenStream(response),
+        }
+        if "tool_execution_callback" in inspect.signature(run_chat_turn).parameters:
+            turn_kwargs["tool_execution_callback"] = tool_stream.send_execution
+
+        state = await run_chat_turn(state, message.content, **turn_kwargs)
     except Exception as exc:
         await response.stream_token(f"Chat failed: {exc}")
     else:

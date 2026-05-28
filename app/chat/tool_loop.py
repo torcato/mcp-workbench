@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, ImageContent, TextContent, TextResourceContents, Tool
 from pydantic import BaseModel, Field
@@ -49,6 +49,7 @@ class ChatToolLoop:
         mcp_manager: MCPManager,
         approval_policy: ToolApprovalPolicy | None = None,
         max_tool_iterations: int = 5,
+        tool_execution_callback: Callable[[MCPToolExecution], Awaitable[None]] | None = None,
     ) -> None:
         if max_tool_iterations < 1:
             raise ValueError("max_tool_iterations must be at least 1")
@@ -57,6 +58,7 @@ class ChatToolLoop:
         self.mcp_manager = mcp_manager
         self.approval_policy = approval_policy or ToolApprovalPolicy()
         self.max_tool_iterations = max_tool_iterations
+        self.tool_execution_callback = tool_execution_callback
 
     async def run(
         self,
@@ -92,6 +94,7 @@ class ChatToolLoop:
             for tool_call in completion.tool_calls:
                 execution, tool_message = await self._handle_tool_call(tool_call, registry)
                 executions.append(execution)
+                await self._notify_tool_execution(execution)
                 conversation.append(tool_message)
 
         raise RuntimeError("Maximum tool call iterations exceeded")
@@ -152,6 +155,10 @@ class ChatToolLoop:
             result=result,
         )
         return execution, ChatMessage(role="tool", content=result, tool_call_id=tool_call.id)
+
+    async def _notify_tool_execution(self, execution: MCPToolExecution) -> None:
+        if self.tool_execution_callback is not None:
+            await self.tool_execution_callback(execution)
 
     def _assistant_tool_call_message(self, completion: ChatCompletion) -> ChatMessage:
         return ChatMessage(

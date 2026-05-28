@@ -14,7 +14,7 @@ class OpenAIProvider(LLMProvider):
         self,
         api_key: str,
         base_url: str = "https://api.openai.com/v1",
-        default_model: str = "gpt-3.5-turbo",
+        default_model: str = "gpt-4.1-mini",
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         if not api_key:

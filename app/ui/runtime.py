@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Awaitable, Callable, Protocol
 
-from app.chat.tool_loop import ChatToolLoop
+from app.chat.tool_loop import ChatToolLoop, MCPToolExecution
 from app.config import AppSettings
 from app.llm.base import ChatMessage, LLMProvider
 from app.llm.openai import OpenAIProvider
@@ -96,6 +96,7 @@ async def run_chat_turn(
     provider: LLMProvider,
     mcp_manager: MCPManager,
     token_stream: TokenStream,
+    tool_execution_callback: Callable[[MCPToolExecution], Awaitable[None]] | None = None,
 ) -> ChatSessionState:
     conversation = [*state.messages, ChatMessage(role="user", content=user_content)]
 
@@ -113,7 +114,11 @@ async def run_chat_turn(
             messages=conversation,
         )
 
-    loop = ChatToolLoop(provider=provider, mcp_manager=mcp_manager)
+    loop = ChatToolLoop(
+        provider=provider,
+        mcp_manager=mcp_manager,
+        tool_execution_callback=tool_execution_callback,
+    )
     result = await loop.run(conversation, model=state.model)
     for token in _chunk_text(result.content):
         await token_stream.send_token(token)

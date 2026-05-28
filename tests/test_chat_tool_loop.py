@@ -99,6 +99,51 @@ async def test_chat_loop_invokes_mcp_tool_and_feeds_result_back() -> None:
 
 
 @pytest.mark.anyio
+async def test_chat_loop_notifies_tool_execution_callback() -> None:
+    provider = FakeProvider(
+        [
+            ChatCompletion(
+                tool_calls=[
+                    ToolCall(
+                        id="call-1",
+                        name="local__search",
+                        arguments={"query": "phase 5"},
+                    )
+                ]
+            ),
+            ChatCompletion(content="Done."),
+        ]
+    )
+    mcp_manager = FakeMCPManager(
+        [
+            Tool(
+                name="search",
+                description="Search documents",
+                inputSchema={"type": "object", "properties": {"query": {"type": "string"}}},
+            )
+        ]
+    )
+    executions = []
+
+    async def record_execution(execution):
+        executions.append(execution)
+
+    loop = ChatToolLoop(
+        provider=provider,
+        mcp_manager=mcp_manager,
+        tool_execution_callback=record_execution,
+    )
+
+    await loop.run([ChatMessage(role="user", content="Find phase 5 docs")])
+
+    assert len(executions) == 1
+    assert executions[0].server_name == "local"
+    assert executions[0].tool_name == "search"
+    assert executions[0].arguments == {"query": "phase 5"}
+    assert executions[0].result == "search result"
+
+
+@pytest.mark.anyio
 async def test_chat_loop_blocks_destructive_tools_by_default() -> None:
     provider = FakeProvider(
         [

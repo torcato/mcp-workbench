@@ -400,6 +400,7 @@ cd mcp-workbench
 ## Python Environment
 
 ```bash
+pyenv local 3.11.11
 python -m venv .venv
 source .venv/bin/activate
 ```
@@ -443,7 +444,7 @@ uvicorn app.main:app --reload
 ## Run UI
 
 ```bash
-chainlit run app/ui/chainlit_app.py
+DEBUG=false chainlit run app/ui/chainlit_app.py
 ```
 
 ---
