@@ -33,11 +33,22 @@ MCP_MANAGER_KEY = "mcp_manager"
 
 
 class ChainlitTokenStream:
-    def __init__(self, message: cl.Message) -> None:
-        self.message = message
+    def __init__(self) -> None:
+        self.message: cl.Message | None = None
+
+    async def ensure_message(self) -> cl.Message:
+        if self.message is None:
+            self.message = cl.Message(content="")
+            await self.message.send()
+        return self.message
 
     async def send_token(self, token: str) -> None:
-        await self.message.stream_token(token)
+        message = await self.ensure_message()
+        await message.stream_token(token)
+
+    async def update(self) -> None:
+        message = await self.ensure_message()
+        await message.update()
 
 
 class ChainlitToolExecutionStream:
@@ -141,27 +152,26 @@ async def on_message(message: cl.Message) -> None:
     settings = get_settings()
     state = cl.user_session.get(STATE_KEY)
     mcp_manager = cl.user_session.get(MCP_MANAGER_KEY)
-    response = cl.Message(content="")
-    await response.send()
+    token_stream = ChainlitTokenStream()
 
     try:
         provider = create_provider(settings)
-        tool_stream = ChainlitToolExecutionStream(parent_id=response.id)
+        tool_stream = ChainlitToolExecutionStream()
         turn_kwargs = {
             "provider": provider,
             "mcp_manager": mcp_manager,
-            "token_stream": ChainlitTokenStream(response),
+            "token_stream": token_stream,
         }
         if "tool_execution_callback" in inspect.signature(run_chat_turn).parameters:
             turn_kwargs["tool_execution_callback"] = tool_stream.send_execution
 
         state = await run_chat_turn(state, message.content, **turn_kwargs)
     except Exception as exc:
-        await response.stream_token(f"Chat failed: {exc}")
+        await token_stream.send_token(f"Chat failed: {exc}")
     else:
         cl.user_session.set(STATE_KEY, state)
 
-    await response.update()
+    await token_stream.update()
 
 
 @cl.on_chat_end
