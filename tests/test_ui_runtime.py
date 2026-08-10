@@ -8,6 +8,8 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from app.config import AppSettings
 from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
+from app.llm.openai import OpenAIProvider
+from app.llm.vertex import VertexAIProvider
 from app.mcp.manager import MCPManager
 from app.mcp.models import MCPServerConfig, MCPTransport
 from app.prompts.manager import PromptManager
@@ -16,6 +18,7 @@ from app.ui.runtime import (
     ChatSessionState,
     apply_session_settings,
     build_ui_options,
+    create_provider,
     resolve_initial_mcp_server,
     run_chat_turn,
 )
@@ -176,6 +179,36 @@ def test_resolve_initial_mcp_server_falls_back_to_none_for_unknown_default(tmp_p
     options = build_ui_options(settings, prompt_manager, mcp_manager)
 
     assert resolve_initial_mcp_server(settings, options) == NO_MCP_SERVER
+
+
+def test_create_provider_uses_openai_compatible_provider() -> None:
+    provider = create_provider(AppSettings(llm_provider="openai", llm_api_key="test-key"))
+
+    assert isinstance(provider, OpenAIProvider)
+    assert provider.provider_name == "openai-compatible"
+
+
+def test_create_provider_uses_vertex_ai_provider() -> None:
+    provider = create_provider(
+        AppSettings(
+            llm_provider="vertex_ai",
+            vertex_ai_project="test-project",
+            vertex_ai_location="us-central1",
+            vertex_ai_credentials_path="/secure/service-account.json",
+            llm_default_model="google/gemini-2.5-flash",
+        )
+    )
+
+    assert isinstance(provider, VertexAIProvider)
+    assert provider.provider_name == "vertex-ai"
+    assert provider.project == "test-project"
+    assert provider.location == "us-central1"
+    assert provider.credentials_path == "/secure/service-account.json"
+
+
+def test_create_provider_rejects_unknown_provider() -> None:
+    with pytest.raises(RuntimeError, match="Unsupported LLM provider"):
+        create_provider(AppSettings(llm_provider="unknown", llm_api_key="test-key"))
 
 
 @pytest.mark.anyio

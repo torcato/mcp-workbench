@@ -57,14 +57,32 @@ def resolve_initial_mcp_server(settings: AppSettings, options: UIOptions) -> str
 
 
 def create_provider(settings: AppSettings) -> LLMProvider:
-    if not settings.llm_api_key:
-        raise RuntimeError("LLM_API_KEY is required to use chat")
+    provider_name = settings.llm_provider.lower().replace("-", "_")
 
-    return OpenAIProvider(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        default_model=settings.llm_default_model,
-    )
+    if provider_name in {"openai", "openai_compatible"}:
+        if not settings.llm_api_key:
+            raise RuntimeError("LLM_API_KEY is required to use the OpenAI-compatible provider")
+
+        return OpenAIProvider(
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            default_model=settings.llm_default_model,
+        )
+
+    if provider_name in {"vertex", "vertex_ai"}:
+        if not settings.vertex_ai_project:
+            raise RuntimeError("VERTEX_AI_PROJECT is required to use the Vertex AI provider")
+
+        from app.llm.vertex import VertexAIProvider
+
+        return VertexAIProvider(
+            project=settings.vertex_ai_project,
+            location=settings.vertex_ai_location,
+            credentials_path=settings.vertex_ai_credentials_path,
+            default_model=settings.llm_default_model,
+        )
+
+    raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
 
 
 async def apply_session_settings(

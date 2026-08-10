@@ -9,6 +9,10 @@ def clear_llm_env(monkeypatch) -> None:
         "LLM_BASE_URL",
         "LLM_MODEL",
         "LLM_MODELS",
+        "LLM_PROVIDER",
+        "VERTEX_AI_CREDENTIALS_PATH",
+        "VERTEX_AI_LOCATION",
+        "VERTEX_AI_PROJECT",
         "MCP_WORKBENCH_DEFAULT_MCP_SERVER",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -41,3 +45,24 @@ def test_settings_load_default_mcp_server_env_file(tmp_path: Path, monkeypatch) 
     settings = AppSettings(_env_file=env_file)
 
     assert settings.default_mcp_server == "local"
+
+
+def test_settings_load_vertex_ai_env_file(tmp_path: Path, monkeypatch) -> None:
+    clear_llm_env(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "LLM_PROVIDER=vertex_ai\n"
+        "VERTEX_AI_PROJECT=test-project\n"
+        "VERTEX_AI_LOCATION=us-central1\n"
+        "VERTEX_AI_CREDENTIALS_PATH=/secure/service-account.json\n"
+        "LLM_MODEL=google/gemini-2.5-flash\n",
+        encoding="utf-8",
+    )
+
+    settings = AppSettings(_env_file=env_file)
+
+    assert settings.llm_provider == "vertex_ai"
+    assert settings.vertex_ai_project == "test-project"
+    assert settings.vertex_ai_location == "us-central1"
+    assert settings.vertex_ai_credentials_path == "/secure/service-account.json"
+    assert settings.llm_default_model == "google/gemini-2.5-flash"

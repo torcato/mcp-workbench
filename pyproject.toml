@@ -13,6 +13,7 @@ dependencies = [
   "sqlalchemy>=2.0.0",
   "python-json-logger>=3.0.0",
   "httpx>=0.24.0",
+  "google-auth[requests]>=2.0.0",
   "mcp>=1.27.1",
   "chainlit>=2.0.0",
 ]

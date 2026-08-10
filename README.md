@@ -13,6 +13,7 @@ MCP Workbench provides a modern chat interface with first-class support for:
 - OAuth authentication
 - configurable system prompts
 - multiple LLM providers
+- Vertex AI
 - tool governance and approval workflows
 
 Built for engineers who want full control over prompts, integrations, authentication, and tooling.
@@ -91,6 +92,7 @@ Examples:
 Supports OpenAI-compatible APIs:
 
 - OpenAI
+- Vertex AI
 - Ollama
 - llama.cpp
 - LM Studio
@@ -391,7 +393,7 @@ tool_policies:
 ## Clone
 
 ```bash
-git clone https://github.com/your-org/mcp-workbench.git
+git clone https://github.com/torcato/mcp-workbench
 cd mcp-workbench
 ```
 
@@ -426,10 +428,24 @@ Create:
 Example:
 
 ```env
+LLM_PROVIDER=openai
 LLM_API_KEY=your-key
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-3.5-turbo
 ```
+
+Vertex AI example:
+
+```env
+LLM_PROVIDER=vertex_ai
+VERTEX_AI_PROJECT=your-gcp-project-id
+VERTEX_AI_LOCATION=global
+VERTEX_AI_CREDENTIALS_PATH=/secure/path/service-account.json
+LLM_MODEL=google/gemini-2.5-flash
+LLM_MODELS='["google/gemini-2.5-flash", "google/gemini-2.5-pro"]'
+```
+
+If `VERTEX_AI_CREDENTIALS_PATH` is omitted, the provider uses Google Application Default Credentials.
 
 ---
 
