@@ -12,11 +12,12 @@ from app.charts.models import ChartArtifact, ChartSpec
 def render_chart(spec: ChartSpec) -> ChartArtifact:
     figure = go.Figure()
 
-    if spec.chart_type == "pie":
+    if spec.chart_type in {"pie", "donut"}:
         figure.add_trace(
             go.Pie(
                 labels=_column_values(spec.data, spec.x),
-                values=_numeric_column_values(spec.data, spec.y),
+                values=_numeric_column_values(spec.data, _required_y(spec)),
+                hole=0.4 if spec.chart_type == "donut" else 0,
             )
         )
     elif spec.series:
@@ -30,12 +31,13 @@ def render_chart(spec: ChartSpec) -> ChartArtifact:
         template="plotly_white",
         margin={"l": 48, "r": 24, "t": 64, "b": 48},
         legend_title_text=spec.series,
-        barmode="group",
+        barmode=_bar_mode(spec),
     )
 
-    if spec.chart_type != "pie":
-        figure.update_xaxes(title_text=spec.x_label or spec.x)
-        figure.update_yaxes(title_text=spec.y_label or spec.y)
+    if spec.chart_type not in {"pie", "donut"}:
+        x_title, y_title = _axis_titles(spec)
+        figure.update_xaxes(title_text=x_title)
+        figure.update_yaxes(title_text=y_title)
         if spec.chart_type in {"line", "area"}:
             figure.update_layout(hovermode="x unified")
 
@@ -44,18 +46,57 @@ def render_chart(spec: ChartSpec) -> ChartArtifact:
 
 def _add_trace(figure: go.Figure, spec: ChartSpec, rows: list[dict[str, Any]], name: str | None) -> None:
     x_values = _column_values(rows, spec.x)
-    y_values = _numeric_column_values(rows, spec.y)
 
     if spec.chart_type == "bar":
+        y_values = _numeric_column_values(rows, _required_y(spec))
+        figure.add_trace(go.Bar(x=x_values, y=y_values, name=name))
+    elif spec.chart_type == "horizontal_bar":
+        y_values = _numeric_column_values(rows, _required_y(spec))
+        figure.add_trace(go.Bar(x=y_values, y=x_values, orientation="h", name=name))
+    elif spec.chart_type == "stacked_bar":
+        y_values = _numeric_column_values(rows, _required_y(spec))
         figure.add_trace(go.Bar(x=x_values, y=y_values, name=name))
     elif spec.chart_type == "line":
+        y_values = _numeric_column_values(rows, _required_y(spec))
         figure.add_trace(go.Scatter(x=x_values, y=y_values, mode="lines+markers", name=name))
     elif spec.chart_type == "scatter":
+        y_values = _numeric_column_values(rows, _required_y(spec))
         figure.add_trace(go.Scatter(x=x_values, y=y_values, mode="markers", name=name))
     elif spec.chart_type == "area":
+        y_values = _numeric_column_values(rows, _required_y(spec))
         figure.add_trace(go.Scatter(x=x_values, y=y_values, mode="lines", fill="tozeroy", name=name))
+    elif spec.chart_type == "histogram":
+        histogram_args: dict[str, Any] = {"x": _numeric_column_values(rows, spec.x), "name": name}
+        if spec.series:
+            histogram_args["opacity"] = 0.75
+        figure.add_trace(go.Histogram(**histogram_args))
+    elif spec.chart_type == "box":
+        y_values = _numeric_column_values(rows, _required_y(spec))
+        figure.add_trace(go.Box(x=x_values, y=y_values, name=name, boxpoints="outliers"))
     else:
         raise ValueError(f"Unsupported chart type: {spec.chart_type}")
+
+
+def _required_y(spec: ChartSpec) -> str:
+    if not spec.y:
+        raise ValueError(f"Chart type '{spec.chart_type}' requires a y column")
+    return spec.y
+
+
+def _bar_mode(spec: ChartSpec) -> str:
+    if spec.chart_type == "stacked_bar":
+        return "stack"
+    if spec.chart_type == "histogram" and spec.series:
+        return "overlay"
+    return "group"
+
+
+def _axis_titles(spec: ChartSpec) -> tuple[str, str]:
+    if spec.chart_type == "horizontal_bar":
+        return spec.y_label or _required_y(spec), spec.x_label or spec.x
+    if spec.chart_type == "histogram":
+        return spec.x_label or spec.x, spec.y_label or "Count"
+    return spec.x_label or spec.x, spec.y_label or _required_y(spec)
 
 
 def _column_values(rows: list[dict[str, Any]], column: str) -> list[Any]:

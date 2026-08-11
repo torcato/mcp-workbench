@@ -34,6 +34,47 @@ def test_render_chart_creates_bar_figure() -> None:
     assert artifact.figure.layout.title.text == "Incidents by Month"
 
 
+def test_render_chart_creates_horizontal_bar_figure() -> None:
+    spec = ChartSpec(
+        chart_type="horizontal_bar",
+        title="Incidents by Category",
+        data=[
+            {"category": "Rescue", "incidents": 3},
+            {"category": "Fire", "incidents": 5},
+        ],
+        x="category",
+        y="incidents",
+    )
+
+    artifact = render_chart(spec)
+
+    assert artifact.figure.data[0].type == "bar"
+    assert artifact.figure.data[0].orientation == "h"
+    assert list(artifact.figure.data[0].x) == [3, 5]
+    assert list(artifact.figure.data[0].y) == ["Rescue", "Fire"]
+
+
+def test_render_chart_creates_stacked_bar_figure() -> None:
+    spec = ChartSpec(
+        chart_type="stacked_bar",
+        title="Incidents by Month and Type",
+        data=[
+            {"month": "Jan", "type": "Rescue", "incidents": 3},
+            {"month": "Jan", "type": "Fire", "incidents": 2},
+            {"month": "Feb", "type": "Rescue", "incidents": 4},
+        ],
+        x="month",
+        y="incidents",
+        series="type",
+    )
+
+    artifact = render_chart(spec)
+
+    assert [trace.name for trace in artifact.figure.data] == ["Rescue", "Fire"]
+    assert artifact.figure.data[0].type == "bar"
+    assert artifact.figure.layout.barmode == "stack"
+
+
 def test_render_chart_creates_grouped_line_figure() -> None:
     spec = ChartSpec(
         chart_type="line",
@@ -53,6 +94,81 @@ def test_render_chart_creates_grouped_line_figure() -> None:
     assert [trace.name for trace in artifact.figure.data] == ["A", "B"]
     assert artifact.figure.data[0].type == "scatter"
     assert artifact.figure.data[0].mode == "lines+markers"
+
+
+def test_render_chart_creates_donut_figure() -> None:
+    spec = ChartSpec(
+        chart_type="donut",
+        title="Course Outcomes",
+        data=[
+            {"outcome": "Passed", "count": 8},
+            {"outcome": "Failed", "count": 2},
+        ],
+        x="outcome",
+        y="count",
+    )
+
+    artifact = render_chart(spec)
+
+    assert artifact.figure.data[0].type == "pie"
+    assert artifact.figure.data[0].hole == 0.4
+
+
+def test_render_chart_creates_histogram_without_y_column() -> None:
+    spec = ChartSpec(
+        chart_type="histogram",
+        title="Response Time Distribution",
+        data=[
+            {"seconds": 12},
+            {"seconds": 18},
+            {"seconds": 18},
+        ],
+        x="seconds",
+    )
+
+    artifact = render_chart(spec)
+
+    assert artifact.figure.data[0].type == "histogram"
+    assert list(artifact.figure.data[0].x) == [12, 18, 18]
+    assert artifact.figure.layout.yaxis.title.text == "Count"
+
+
+def test_render_chart_histogram_ignores_unused_y_column() -> None:
+    spec = ChartSpec(
+        chart_type="histogram",
+        title="Response Time Distribution",
+        data=[
+            {"seconds": 12},
+            {"seconds": 18},
+        ],
+        x="seconds",
+        y="unused",
+    )
+
+    artifact = render_chart(spec)
+
+    assert artifact.figure.data[0].type == "histogram"
+    assert list(artifact.figure.data[0].x) == [12, 18]
+
+
+def test_render_chart_creates_box_figure() -> None:
+    spec = ChartSpec(
+        chart_type="box",
+        title="Response Times by Team",
+        data=[
+            {"team": "A", "seconds": 12},
+            {"team": "A", "seconds": 18},
+            {"team": "B", "seconds": 10},
+        ],
+        x="team",
+        y="seconds",
+    )
+
+    artifact = render_chart(spec)
+
+    assert artifact.figure.data[0].type == "box"
+    assert list(artifact.figure.data[0].x) == ["A", "A", "B"]
+    assert list(artifact.figure.data[0].y) == [12, 18, 10]
 
 
 @pytest.mark.anyio
@@ -95,4 +211,16 @@ def test_create_chart_tool_definition_is_llm_visible() -> None:
 
     assert definition.name == "create_chart"
     assert "bar chart" in (definition.description or "")
-    assert definition.parameters["required"] == ["chart_type", "title", "data", "x", "y"]
+    assert definition.parameters["properties"]["chart_type"]["enum"] == [
+        "bar",
+        "line",
+        "scatter",
+        "area",
+        "pie",
+        "horizontal_bar",
+        "stacked_bar",
+        "donut",
+        "histogram",
+        "box",
+    ]
+    assert definition.parameters["required"] == ["chart_type", "title", "data", "x"]

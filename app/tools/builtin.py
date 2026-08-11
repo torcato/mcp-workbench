@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.charts import ChartArtifact, ChartSpec, render_chart
+from app.charts import CHART_TYPES, ChartArtifact, ChartSpec, render_chart
 from app.llm.base import ToolDefinition
 
 
@@ -56,7 +56,8 @@ def create_chart_tool() -> BuiltinTool:
         name="create_chart",
         description=(
             "Render an interactive chart from tabular data. Use this when the user asks for a graph, "
-            "bar chart, line chart, scatter plot, area chart, pie chart, or visualization of results."
+            "bar chart, horizontal bar chart, stacked bar chart, line chart, scatter plot, area chart, "
+            "pie chart, donut chart, histogram, box plot, or visualization of results."
         ),
         parameters=_create_chart_schema(),
         call=create_chart,
@@ -75,7 +76,7 @@ def _create_chart_schema() -> dict[str, Any]:
         "properties": {
             "chart_type": {
                 "type": "string",
-                "enum": ["bar", "line", "scatter", "area", "pie"],
+                "enum": list(CHART_TYPES),
                 "description": "The chart kind to render.",
             },
             "title": {
@@ -100,7 +101,7 @@ def _create_chart_schema() -> dict[str, Any]:
             },
             "y": {
                 "type": "string",
-                "description": "Column name for the y-axis, or pie values.",
+                "description": "Column name for the y-axis, or pie/donut values. Required except for histograms.",
             },
             "series": {
                 "type": "string",
@@ -115,5 +116,5 @@ def _create_chart_schema() -> dict[str, Any]:
                 "description": "Optional y-axis label.",
             },
         },
-        "required": ["chart_type", "title", "data", "x", "y"],
+        "required": ["chart_type", "title", "data", "x"],
     }
