@@ -4,12 +4,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Protocol
 
+from app.charts import ChartArtifact
 from app.chat.tool_loop import ChatToolLoop, MCPToolExecution
 from app.config import AppSettings
 from app.llm.base import ChatMessage, LLMProvider
 from app.llm.openai import OpenAIProvider
 from app.mcp.manager import MCPManager
 from app.prompts.manager import PromptManager
+from app.tools.builtin import BuiltinTool, default_builtin_tools
 
 
 NO_MCP_SERVER = "none"
@@ -84,6 +86,8 @@ def create_provider(settings: AppSettings) -> LLMProvider:
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
             default_model=settings.llm_default_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+            max_retries=settings.llm_num_retries,
         )
 
     if provider_name in {"vertex", "vertex_ai"}:
@@ -97,6 +101,8 @@ def create_provider(settings: AppSettings) -> LLMProvider:
             location=settings.vertex_ai_location,
             credentials_path=settings.vertex_ai_credentials_path,
             default_model=settings.llm_default_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+            max_retries=settings.llm_num_retries,
         )
 
     raise RuntimeError(f"Unsupported LLM provider: {settings.llm_provider}")
@@ -138,10 +144,12 @@ async def run_chat_turn(
     mcp_manager: MCPManager,
     token_stream: TokenStream,
     tool_execution_callback: Callable[[MCPToolExecution], Awaitable[None]] | None = None,
+    builtin_tools: list[BuiltinTool] | None = None,
 ) -> ChatSessionState:
     conversation = [*state.messages, ChatMessage(role="user", content=user_content)]
+    active_builtin_tools = list(default_builtin_tools() if builtin_tools is None else builtin_tools)
 
-    if state.mcp_server == NO_MCP_SERVER:
+    if state.mcp_server == NO_MCP_SERVER and not active_builtin_tools:
         assistant_content = ""
         for token in provider.stream_chat(conversation, model=state.model):
             assistant_content += token
@@ -159,8 +167,10 @@ async def run_chat_turn(
         provider=provider,
         mcp_manager=mcp_manager,
         tool_execution_callback=tool_execution_callback,
+        builtin_tools=active_builtin_tools,
     )
     result = await loop.run(conversation, model=state.model)
+    await _send_artifacts(token_stream, result.artifacts)
     for token in _chunk_text(result.content):
         await token_stream.send_token(token)
 
@@ -175,3 +185,12 @@ async def run_chat_turn(
 def _chunk_text(text: str, size: int = 24) -> Iterator[str]:
     for index in range(0, len(text), size):
         yield text[index:index + size]
+
+
+async def _send_artifacts(token_stream: TokenStream, artifacts: list[ChartArtifact]) -> None:
+    if not artifacts:
+        return
+
+    sender = getattr(token_stream, "send_artifacts", None)
+    if sender is not None:
+        await sender(artifacts)

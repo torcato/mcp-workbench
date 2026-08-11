@@ -7,6 +7,7 @@ from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
 
 from app.chat.tool_loop import ChatToolLoop
 from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
+from app.tools.builtin import create_chart_tool
 
 
 @pytest.fixture
@@ -222,6 +223,49 @@ async def test_chat_loop_supports_iterative_tool_calls() -> None:
     ]
     assert result.content == "Done after two searches."
     assert len(result.tool_executions) == 2
+
+
+@pytest.mark.anyio
+async def test_chat_loop_dispatches_builtin_chart_tool() -> None:
+    provider = FakeProvider(
+        [
+            ChatCompletion(
+                tool_calls=[
+                    ToolCall(
+                        id="call-1",
+                        name="create_chart",
+                        arguments={
+                            "chart_type": "bar",
+                            "title": "Incidents by Month",
+                            "data": [
+                                {"month": "Jan", "incidents": 3},
+                                {"month": "Feb", "incidents": 5},
+                            ],
+                            "x": "month",
+                            "y": "incidents",
+                        },
+                    )
+                ]
+            ),
+            ChatCompletion(content="Here is the chart."),
+        ]
+    )
+    loop = ChatToolLoop(
+        provider=provider,
+        mcp_manager=FakeMCPManager([]),
+        builtin_tools=[create_chart_tool()],
+    )
+
+    result = await loop.run([ChatMessage(role="user", content="Graph incidents by month")])
+
+    assert provider.seen_tools[0][0].name == "create_chart"
+    assert result.content == "Here is the chart."
+    assert result.messages[-2].role == "tool"
+    assert result.messages[-2].content.startswith("Created chart 'Incidents by Month'")
+    assert len(result.artifacts) == 1
+    assert result.artifacts[0].figure.data[0].type == "bar"
+    assert result.tool_executions[0].tool_name == "create_chart"
+    assert result.tool_executions[0].artifacts == result.artifacts
 
 
 def test_generated_provider_tool_names_are_provider_safe() -> None:

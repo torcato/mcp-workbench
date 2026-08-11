@@ -142,3 +142,113 @@ def test_openai_provider_http_errors_include_response_body() -> None:
 
     with pytest.raises(httpx.HTTPStatusError, match="Invalid Vertex AI location"):
         provider.chat([ChatMessage(role="user", content="Hi")])
+
+
+def test_openai_provider_retries_throttled_requests_with_backoff() -> None:
+    attempts = 0
+    sleeps = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(
+                429,
+                json=[
+                    {
+                        "error": {
+                            "code": 429,
+                            "status": "RESOURCE_EXHAUSTED",
+                            "message": "Resource exhausted. Please try again later.",
+                        }
+                    }
+                ],
+            )
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Recovered",
+                        }
+                    }
+                ],
+            },
+        )
+
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+        max_retries=2,
+        retry_initial_delay_seconds=0.5,
+        sleep=sleeps.append,
+    )
+
+    response = provider.chat([ChatMessage(role="user", content="Hi")])
+
+    assert response == "Recovered"
+    assert attempts == 2
+    assert sleeps == [0.5]
+
+
+def test_openai_provider_honors_retry_after_header() -> None:
+    attempts = 0
+    sleeps = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, json={"error": {"message": "Slow down"}}, headers={"retry-after": "2"})
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"role": "assistant", "content": "Ok"}}]},
+        )
+
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+        max_retries=1,
+        retry_initial_delay_seconds=0.5,
+        sleep=sleeps.append,
+    )
+
+    assert provider.chat([ChatMessage(role="user", content="Hi")]) == "Ok"
+    assert sleeps == [2.0]
+
+
+def test_openai_provider_raises_after_retry_exhaustion() -> None:
+    attempts = 0
+    sleeps = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(
+            429,
+            json=[
+                {
+                    "error": {
+                        "code": 429,
+                        "status": "RESOURCE_EXHAUSTED",
+                        "message": "Resource exhausted.",
+                    }
+                }
+            ],
+        )
+
+    provider = OpenAIProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+        max_retries=1,
+        retry_initial_delay_seconds=0.5,
+        sleep=sleeps.append,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError, match="RESOURCE_EXHAUSTED 429 Resource exhausted"):
+        provider.chat([ChatMessage(role="user", content="Hi")])
+
+    assert attempts == 2
+    assert sleeps == [0.5]

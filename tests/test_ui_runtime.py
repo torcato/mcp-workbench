@@ -40,6 +40,15 @@ class TokenCollector:
         self.tokens.append(token)
 
 
+class ArtifactCollector(TokenCollector):
+    def __init__(self) -> None:
+        super().__init__()
+        self.artifacts = []
+
+    async def send_artifacts(self, artifacts) -> None:
+        self.artifacts.extend(artifacts)
+
+
 class StreamingProvider(LLMProvider):
     @property
     def provider_name(self) -> str:
@@ -89,6 +98,53 @@ class ToolCallingProvider(LLMProvider):
                 ]
             )
         return ChatCompletion(content="Tool result included.")
+
+    def stream_chat(self, messages: list[ChatMessage], model: str | None = None, temperature: float = 1.0) -> Iterator[str]:
+        return iter(())
+
+
+class BuiltinChartProvider(LLMProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+        self.seen_tools: list[list[ToolDefinition]] = []
+
+    @property
+    def provider_name(self) -> str:
+        return "chart-provider"
+
+    def chat(self, messages: list[ChatMessage], model: str | None = None, temperature: float = 1.0) -> str:
+        return self.complete_chat(messages, model=model, temperature=temperature).content or ""
+
+    def complete_chat(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolDefinition] | None = None,
+        model: str | None = None,
+        temperature: float = 1.0,
+    ) -> ChatCompletion:
+        self.calls += 1
+        self.seen_tools.append(list(tools or []))
+        if self.calls == 1:
+            assert any(tool.name == "create_chart" for tool in tools or [])
+            return ChatCompletion(
+                tool_calls=[
+                    ToolCall(
+                        id="call-chart",
+                        name="create_chart",
+                        arguments={
+                            "chart_type": "line",
+                            "title": "Monthly Attendance",
+                            "data": [
+                                {"month": "Jan", "count": 10},
+                                {"month": "Feb", "count": 12},
+                            ],
+                            "x": "month",
+                            "y": "count",
+                        },
+                    )
+                ]
+            )
+        return ChatCompletion(content="Rendered the chart.")
 
     def stream_chat(self, messages: list[ChatMessage], model: str | None = None, temperature: float = 1.0) -> Iterator[str]:
         return iter(())
@@ -185,10 +241,19 @@ def test_resolve_initial_mcp_server_falls_back_to_none_for_unknown_default(tmp_p
 
 
 def test_create_provider_uses_openai_compatible_provider() -> None:
-    provider = create_provider(AppSettings(llm_provider="openai", llm_api_key="test-key"))
+    provider = create_provider(
+        AppSettings(
+            llm_provider="openai",
+            llm_api_key="test-key",
+            llm_timeout_seconds=20,
+            llm_num_retries=4,
+        )
+    )
 
     assert isinstance(provider, OpenAIProvider)
     assert provider.provider_name == "openai-compatible"
+    assert provider.timeout_seconds == 20
+    assert provider.max_retries == 4
 
 
 def test_create_provider_uses_vertex_ai_provider() -> None:
@@ -199,6 +264,8 @@ def test_create_provider_uses_vertex_ai_provider() -> None:
             vertex_ai_location="us-central1",
             vertex_ai_credentials_path="/secure/service-account.json",
             llm_default_model="google/gemini-2.5-flash",
+            llm_timeout_seconds=25,
+            llm_num_retries=6,
         )
     )
 
@@ -207,6 +274,8 @@ def test_create_provider_uses_vertex_ai_provider() -> None:
     assert provider.project == "test-project"
     assert provider.location == "us-central1"
     assert provider.credentials_path == "/secure/service-account.json"
+    assert provider.timeout_seconds == 25
+    assert provider.max_retries == 6
 
 
 def test_create_provider_uses_litellm_provider(monkeypatch) -> None:
@@ -282,6 +351,7 @@ async def test_run_chat_turn_streams_direct_provider_response() -> None:
         provider=StreamingProvider(),
         mcp_manager=FakeMCPManager(),
         token_stream=collector,
+        builtin_tools=[],
     )
 
     assert collector.tokens == ["hello", " world"]
@@ -310,3 +380,29 @@ async def test_run_chat_turn_uses_mcp_tool_loop_when_server_selected() -> None:
     assert mcp_manager.calls == [("local", "lookup", {"query": "phase 6"})]
     assert "".join(collector.tokens) == "Tool result included."
     assert next_state.messages[-1] == ChatMessage(role="assistant", content="Tool result included.")
+
+
+@pytest.mark.anyio
+async def test_run_chat_turn_exposes_builtin_chart_tool_without_mcp_server() -> None:
+    collector = ArtifactCollector()
+    provider = BuiltinChartProvider()
+    state = ChatSessionState(
+        model="gpt-4.1",
+        prompt_profile="default",
+        mcp_server=NO_MCP_SERVER,
+        messages=[ChatMessage(role="system", content="System")],
+    )
+
+    next_state = await run_chat_turn(
+        state,
+        "Create a line chart of attendance",
+        provider=provider,
+        mcp_manager=MCPManager([]),
+        token_stream=collector,
+    )
+
+    assert provider.seen_tools[0][0].name == "create_chart"
+    assert "".join(collector.tokens) == "Rendered the chart."
+    assert len(collector.artifacts) == 1
+    assert collector.artifacts[0].figure.data[0].type == "scatter"
+    assert next_state.messages[-1] == ChatMessage(role="assistant", content="Rendered the chart.")

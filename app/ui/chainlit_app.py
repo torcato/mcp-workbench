@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import chainlit as cl
 from chainlit.input_widget import Select
 
+from app.charts import ChartArtifact
 from app.chat.tool_loop import MCPToolExecution
 from app.config import get_settings
 from app.mcp.manager import MCPManager
@@ -35,10 +36,11 @@ MCP_MANAGER_KEY = "mcp_manager"
 class ChainlitTokenStream:
     def __init__(self) -> None:
         self.message: cl.Message | None = None
+        self.elements = []
 
     async def ensure_message(self) -> cl.Message:
         if self.message is None:
-            self.message = cl.Message(content="")
+            self.message = cl.Message(content="", elements=self.elements)
             await self.message.send()
         return self.message
 
@@ -48,7 +50,21 @@ class ChainlitTokenStream:
 
     async def update(self) -> None:
         message = await self.ensure_message()
+        message.elements = self.elements
         await message.update()
+
+    async def send_artifacts(self, artifacts: list[ChartArtifact]) -> None:
+        self.elements.extend(
+            cl.Plotly(
+                name=artifact.name,
+                figure=artifact.figure,
+                display="inline",
+                size="large",
+            )
+            for artifact in artifacts
+        )
+        if self.message is not None:
+            self.message.elements = self.elements
 
 
 class ChainlitToolExecutionStream:

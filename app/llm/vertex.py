@@ -27,6 +27,8 @@ class VertexAIProvider(OpenAIProvider):
         scopes: Sequence[str] | None = None,
         credentials: Credentials | None = None,
         transport: httpx.BaseTransport | None = None,
+        timeout_seconds: float = 60.0,
+        max_retries: int = 0,
     ) -> None:
         if not project or not project.strip():
             raise ValueError("Vertex AI project is required")
@@ -51,6 +53,8 @@ class VertexAIProvider(OpenAIProvider):
             base_url=base_url,
             default_model=default_model,
             transport=transport,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
         )
 
     @property

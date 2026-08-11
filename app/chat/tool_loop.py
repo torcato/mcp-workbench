@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
+from collections.abc import Sequence
 from typing import Any, Awaitable, Callable
 
 from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, ImageContent, TextContent, TextResourceContents, Tool
 from pydantic import BaseModel, Field
 
+from app.charts import ChartArtifact
 from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
 from app.mcp.manager import MCPManager
+from app.tools.builtin import BuiltinTool, BuiltinToolExecutionError
 from app.tools.policy import ToolApprovalPolicy
 
 
@@ -25,12 +28,14 @@ class MCPToolExecution:
     arguments: dict[str, Any]
     allowed: bool
     result: str
+    artifacts: list[ChartArtifact] = field(default_factory=list)
 
 
 class ChatToolLoopResult(BaseModel):
     content: str
     messages: list[ChatMessage]
     tool_executions: list[MCPToolExecution] = Field(default_factory=list)
+    artifacts: list[ChartArtifact] = Field(default_factory=list)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -42,6 +47,15 @@ class RegisteredTool:
     tool: Tool
 
 
+@dataclass(frozen=True)
+class RegisteredBuiltinTool:
+    provider_name: str
+    tool: BuiltinTool
+
+
+RegisteredAnyTool = RegisteredTool | RegisteredBuiltinTool
+
+
 class ChatToolLoop:
     def __init__(
         self,
@@ -50,6 +64,7 @@ class ChatToolLoop:
         approval_policy: ToolApprovalPolicy | None = None,
         max_tool_iterations: int = 25,
         tool_execution_callback: Callable[[MCPToolExecution], Awaitable[None]] | None = None,
+        builtin_tools: Sequence[BuiltinTool] | None = None,
     ) -> None:
         if max_tool_iterations < 1:
             raise ValueError("max_tool_iterations must be at least 1")
@@ -59,6 +74,7 @@ class ChatToolLoop:
         self.approval_policy = approval_policy or ToolApprovalPolicy()
         self.max_tool_iterations = max_tool_iterations
         self.tool_execution_callback = tool_execution_callback
+        self.builtin_tools = tuple(builtin_tools or ())
 
     async def run(
         self,
@@ -68,15 +84,9 @@ class ChatToolLoop:
     ) -> ChatToolLoopResult:
         conversation = list(messages)
         registry = await self._discover_tools()
-        tool_definitions = [
-            ToolDefinition(
-                name=registered.provider_name,
-                description=registered.tool.description,
-                parameters=registered.tool.inputSchema,
-            )
-            for registered in registry.values()
-        ]
+        tool_definitions = [self._tool_definition(registered) for registered in registry.values()]
         executions: list[MCPToolExecution] = []
+        artifacts: list[ChartArtifact] = []
 
         for _ in range(self.max_tool_iterations):
             completion = self.provider.complete_chat(
@@ -88,31 +98,51 @@ class ChatToolLoop:
             if not completion.tool_calls:
                 content = completion.content or ""
                 conversation.append(ChatMessage(role="assistant", content=content))
-                return ChatToolLoopResult(content=content, messages=conversation, tool_executions=executions)
+                return ChatToolLoopResult(
+                    content=content,
+                    messages=conversation,
+                    tool_executions=executions,
+                    artifacts=artifacts,
+                )
 
             conversation.append(self._assistant_tool_call_message(completion))
             for tool_call in completion.tool_calls:
                 execution, tool_message = await self._handle_tool_call(tool_call, registry)
                 executions.append(execution)
+                artifacts.extend(execution.artifacts)
                 await self._notify_tool_execution(execution)
                 conversation.append(tool_message)
 
         raise RuntimeError("Maximum tool call iterations exceeded")
 
-    async def _discover_tools(self) -> dict[str, RegisteredTool]:
-        registry: dict[str, RegisteredTool] = {}
+    async def _discover_tools(self) -> dict[str, RegisteredAnyTool]:
+        registry: dict[str, RegisteredAnyTool] = {}
         for server_name in self.mcp_manager.list_connected_servers():
             for tool in await self.mcp_manager.list_tools(server_name):
                 provider_name = self._provider_tool_name(server_name, tool.name)
                 if provider_name in registry:
                     raise ValueError(f"Duplicate provider tool name generated: {provider_name}")
                 registry[provider_name] = RegisteredTool(provider_name=provider_name, server_name=server_name, tool=tool)
+        for tool in self.builtin_tools:
+            if tool.name in registry:
+                raise ValueError(f"Duplicate provider tool name generated: {tool.name}")
+            registry[tool.name] = RegisteredBuiltinTool(provider_name=tool.name, tool=tool)
         return registry
+
+    def _tool_definition(self, registered: RegisteredAnyTool) -> ToolDefinition:
+        if isinstance(registered, RegisteredBuiltinTool):
+            return registered.tool.definition()
+
+        return ToolDefinition(
+            name=registered.provider_name,
+            description=registered.tool.description,
+            parameters=registered.tool.inputSchema,
+        )
 
     async def _handle_tool_call(
         self,
         tool_call: ToolCall,
-        registry: dict[str, RegisteredTool],
+        registry: dict[str, RegisteredAnyTool],
     ) -> tuple[MCPToolExecution, ChatMessage]:
         registered = registry.get(tool_call.name)
         if registered is None:
@@ -126,6 +156,9 @@ class ChatToolLoop:
                 result=result,
             )
             return execution, ChatMessage(role="tool", content=result, tool_call_id=tool_call.id)
+
+        if isinstance(registered, RegisteredBuiltinTool):
+            return await self._handle_builtin_tool_call(tool_call, registered)
 
         decision = self.approval_policy.approve(registered.server_name, registered.tool, tool_call.arguments)
         if not decision.allowed:
@@ -155,6 +188,34 @@ class ChatToolLoop:
             result=result,
         )
         return execution, ChatMessage(role="tool", content=result, tool_call_id=tool_call.id)
+
+    async def _handle_builtin_tool_call(
+        self,
+        tool_call: ToolCall,
+        registered: RegisteredBuiltinTool,
+    ) -> tuple[MCPToolExecution, ChatMessage]:
+        try:
+            result = await registered.tool.call(tool_call.arguments)
+        except BuiltinToolExecutionError as exc:
+            result_text = f"Tool returned an error: {exc}"
+            artifacts: list[ChartArtifact] = []
+        except Exception as exc:
+            result_text = f"Tool returned an error: Built-in tool failed: {exc}"
+            artifacts = []
+        else:
+            result_text = result.content
+            artifacts = result.artifacts
+
+        execution = MCPToolExecution(
+            provider_tool_name=tool_call.name,
+            server_name="",
+            tool_name=registered.tool.name,
+            arguments=tool_call.arguments,
+            allowed=True,
+            result=result_text,
+            artifacts=artifacts,
+        )
+        return execution, ChatMessage(role="tool", content=result_text, tool_call_id=tool_call.id)
 
     async def _notify_tool_execution(self, execution: MCPToolExecution) -> None:
         if self.tool_execution_callback is not None:
