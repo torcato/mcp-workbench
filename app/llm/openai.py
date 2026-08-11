@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
-from uuid import uuid4
 from typing import Iterator
+from uuid import uuid4
 
 import httpx
 
 from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
+
+
+MAX_ERROR_DETAIL_LENGTH = 1000
 
 
 class OpenAIProvider(LLMProvider):
@@ -96,6 +99,19 @@ class OpenAIProvider(LLMProvider):
         completion = self.complete_chat(messages, model=model, temperature=temperature)
         return completion.content or ""
 
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = _extract_error_detail(response)
+            if detail:
+                raise httpx.HTTPStatusError(
+                    f"{exc}\nResponse body: {detail}",
+                    request=exc.request,
+                    response=exc.response,
+                ) from exc
+            raise
+
     def complete_chat(
         self,
         messages: list[ChatMessage],
@@ -108,7 +124,7 @@ class OpenAIProvider(LLMProvider):
                 "/chat/completions",
                 json=self._payload(messages, model, temperature, stream=False, tools=tools),
             )
-            response.raise_for_status()
+            self._raise_for_status(response)
             return self._extract_completion(response.json())
 
     def stream_chat(self, messages: list[ChatMessage], model: str | None = None, temperature: float = 1.0) -> Iterator[str]:
@@ -118,7 +134,7 @@ class OpenAIProvider(LLMProvider):
                 "/chat/completions",
                 json=self._payload(messages, model, temperature, stream=True),
             ) as response:
-                response.raise_for_status()
+                self._raise_for_status(response)
                 for line in response.iter_lines():
                     if not line:
                         continue
@@ -132,3 +148,41 @@ class OpenAIProvider(LLMProvider):
                         content = delta.get("content")
                         if content:
                             yield content
+
+
+def _extract_error_detail(response: httpx.Response) -> str | None:
+    try:
+        response.read()
+    except httpx.HTTPError:
+        pass
+
+    try:
+        text = response.text.strip()
+    except RuntimeError:
+        return None
+
+    if not text:
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return _truncate_error_detail(text)
+
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            status = error.get("status")
+            code = error.get("code")
+            parts = [str(part) for part in (status, code, message) if part]
+            if parts:
+                return _truncate_error_detail(" ".join(parts))
+
+    return _truncate_error_detail(json.dumps(payload, separators=(",", ":")))
+
+
+def _truncate_error_detail(detail: str) -> str:
+    if len(detail) <= MAX_ERROR_DETAIL_LENGTH:
+        return detail
+    return f"{detail[:MAX_ERROR_DETAIL_LENGTH]}..."

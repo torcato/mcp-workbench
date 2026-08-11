@@ -59,6 +59,23 @@ def resolve_initial_mcp_server(settings: AppSettings, options: UIOptions) -> str
 def create_provider(settings: AppSettings) -> LLMProvider:
     provider_name = settings.llm_provider.lower().replace("-", "_")
 
+    if provider_name in {"litellm", "lite_llm"}:
+        from app.llm.litellm_provider import LiteLLMProvider
+
+        default_llm_base_url = AppSettings.model_fields["llm_base_url"].default
+        api_base = settings.llm_base_url if settings.llm_base_url != default_llm_base_url else None
+        return LiteLLMProvider(
+            default_model=settings.llm_default_model,
+            api_key=settings.llm_api_key,
+            api_base=api_base,
+            timeout_seconds=settings.llm_timeout_seconds,
+            num_retries=settings.llm_num_retries,
+            use_system_prompt=settings.llm_use_system_prompt,
+            vertex_ai_project=settings.vertex_ai_project,
+            vertex_ai_location=settings.vertex_ai_location,
+            vertex_ai_credentials_path=settings.vertex_ai_credentials_path,
+        )
+
     if provider_name in {"openai", "openai_compatible"}:
         if not settings.llm_api_key:
             raise RuntimeError("LLM_API_KEY is required to use the OpenAI-compatible provider")

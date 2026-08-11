@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -13,6 +14,7 @@ from app.llm.openai import OpenAIProvider
 
 
 DEFAULT_VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+VERTEX_AI_REGION_PATTERN = re.compile(r"^[a-z]+(?:-[a-z]+)*\d$")
 
 
 class VertexAIProvider(OpenAIProvider):
@@ -33,14 +35,17 @@ class VertexAIProvider(OpenAIProvider):
 
         self.project = project.strip()
         self.location = location.strip()
+        if self.location != "global" and not VERTEX_AI_REGION_PATTERN.fullmatch(self.location):
+            raise ValueError(
+                "Vertex AI location must be 'global' or a full region id "
+                "such as 'us-central1' or 'europe-west1'"
+            )
+
         self.credentials_path = str(credentials_path) if credentials_path else None
         self.scopes = tuple(scopes or (DEFAULT_VERTEX_AI_SCOPE,))
         self._credentials = credentials
 
-        base_url = (
-            "https://aiplatform.googleapis.com/v1/"
-            f"projects/{self.project}/locations/{self.location}/endpoints/openapi"
-        )
+        base_url = self._base_url()
         super().__init__(
             api_key="vertex-ai-token-loaded-per-request",
             base_url=base_url,
@@ -51,6 +56,14 @@ class VertexAIProvider(OpenAIProvider):
     @property
     def provider_name(self) -> str:
         return "vertex-ai"
+
+    def _base_url(self) -> str:
+        host = (
+            "aiplatform.googleapis.com"
+            if self.location == "global"
+            else f"{self.location}-aiplatform.googleapis.com"
+        )
+        return f"https://{host}/v1/projects/{self.project}/locations/{self.location}/endpoints/openapi"
 
     def _headers(self) -> dict[str, str]:
         return {

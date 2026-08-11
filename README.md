@@ -285,20 +285,22 @@ mcp-workbench/
 
 ## MCP Servers
 
-Example:
+By default, the app reads MCP server definitions from `mcp-servers.yaml` in the
+project root when the file exists. You can point to a different file with
+`MCP_WORKBENCH_MCP_SERVERS_PATH`.
+
+Example `mcp-servers.yaml`:
 
 ```yaml
 servers:
-  github:
-    transport: streamable_http
-    url: https://example.com/mcp/github
-    oauth: true
+  local-sse:
+    transport: sse
+    url: http://127.0.0.1:8888/sse
     enabled: true
 
-  jira:
+  remote-sse:
     transport: sse
-    url: https://jira.example.com/mcp
-    oauth: true
+    url: https://example.com/mcp
 
   docs:
     transport: stdio
@@ -306,6 +308,15 @@ servers:
     args:
       - docs_server.py
 ```
+
+You can select one by default with:
+
+```env
+MCP_WORKBENCH_DEFAULT_MCP_SERVER=local-sse
+```
+
+`MCP_WORKBENCH_MCP_SERVERS` can still be used for JSON-based environment
+configuration and takes precedence over `mcp-servers.yaml`.
 
 ---
 
@@ -439,6 +450,7 @@ Vertex AI example:
 ```env
 LLM_PROVIDER=vertex_ai
 VERTEX_AI_PROJECT=your-gcp-project-id
+# Use global or a full Vertex AI region id, for example europe-west1.
 VERTEX_AI_LOCATION=global
 VERTEX_AI_CREDENTIALS_PATH=/secure/path/service-account.json
 LLM_MODEL=google/gemini-2.5-flash
@@ -446,6 +458,28 @@ LLM_MODELS='["google/gemini-2.5-flash", "google/gemini-2.5-pro"]'
 ```
 
 If `VERTEX_AI_CREDENTIALS_PATH` is omitted, the provider uses Google Application Default Credentials.
+
+LiteLLM example:
+
+```env
+LLM_PROVIDER=litellm
+LLM_API_KEY=your-key
+LLM_MODEL=openai/gpt-4.1-mini
+LLM_MODELS='["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-5-20250929"]'
+LLM_TIMEOUT_SECONDS=60
+LLM_NUM_RETRIES=5
+```
+
+Vertex AI through LiteLLM:
+
+```env
+LLM_PROVIDER=litellm
+VERTEX_AI_PROJECT=your-gcp-project-id
+VERTEX_AI_LOCATION=global
+VERTEX_AI_CREDENTIALS_PATH=/secure/path/service-account.json
+LLM_MODEL=vertex_ai/gemini-2.5-flash
+LLM_MODELS='["vertex_ai/gemini-2.5-flash", "vertex_ai/gemini-2.5-pro"]'
+```
 
 ---
 

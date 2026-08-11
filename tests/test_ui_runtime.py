@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Iterator
 
 import pytest
@@ -8,6 +10,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from app.config import AppSettings
 from app.llm.base import ChatCompletion, ChatMessage, LLMProvider, ToolCall, ToolDefinition
+from app.llm.litellm_provider import LiteLLMProvider
 from app.llm.openai import OpenAIProvider
 from app.llm.vertex import VertexAIProvider
 from app.mcp.manager import MCPManager
@@ -204,6 +207,37 @@ def test_create_provider_uses_vertex_ai_provider() -> None:
     assert provider.project == "test-project"
     assert provider.location == "us-central1"
     assert provider.credentials_path == "/secure/service-account.json"
+
+
+def test_create_provider_uses_litellm_provider(monkeypatch) -> None:
+    fake_litellm = SimpleNamespace(completion=lambda **kwargs: None)
+    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
+
+    provider = create_provider(
+        AppSettings(
+            llm_provider="litellm",
+            llm_api_key="test-key",
+            llm_base_url="http://localhost:11434/v1",
+            llm_default_model="openai/local-model",
+            llm_timeout_seconds=15,
+            llm_num_retries=3,
+            llm_use_system_prompt=False,
+            vertex_ai_project="test-project",
+            vertex_ai_location="europe-west1",
+            vertex_ai_credentials_path="/secure/service-account.json",
+        )
+    )
+
+    assert isinstance(provider, LiteLLMProvider)
+    assert provider.default_model == "openai/local-model"
+    assert provider.api_key == "test-key"
+    assert provider.api_base == "http://localhost:11434/v1"
+    assert provider.timeout_seconds == 15
+    assert provider.num_retries == 3
+    assert provider.use_system_prompt is False
+    assert provider.vertex_ai_project == "test-project"
+    assert provider.vertex_ai_location == "europe-west1"
+    assert provider.vertex_ai_credentials_path == "/secure/service-account.json"
 
 
 def test_create_provider_rejects_unknown_provider() -> None:

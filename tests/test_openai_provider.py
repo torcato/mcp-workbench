@@ -123,3 +123,22 @@ def test_openai_provider_complete_chat_supports_tool_calls() -> None:
 def test_tool_definition_rejects_invalid_provider_name() -> None:
     with pytest.raises(ValueError, match="tool name"):
         ToolDefinition(name="invalid.name", parameters={"type": "object", "properties": {}})
+
+
+def test_openai_provider_http_errors_include_response_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": "Invalid Vertex AI location",
+                }
+            },
+        )
+
+    provider = OpenAIProvider(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    with pytest.raises(httpx.HTTPStatusError, match="Invalid Vertex AI location"):
+        provider.chat([ChatMessage(role="user", content="Hi")])

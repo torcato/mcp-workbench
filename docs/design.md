@@ -267,18 +267,23 @@ mcp-chat/
 
 ## MCP Servers
 
+`mcp-servers.yaml` is loaded from the project root by default when present.
+`MCP_WORKBENCH_MCP_SERVERS_PATH` can point to a different file.
+
 ```yaml
 servers:
-  github:
-    transport: streamable_http
-    url: https://example.com/mcp/github
-    oauth: true
+  local-sse:
+    transport: sse
+    url: http://127.0.0.1:8888/sse
     enabled: true
 
-  jira:
+  remote-http:
+    transport: streamable_http
+    url: https://example.com/mcp
+
+  remote-sse:
     transport: sse
-    url: https://jira.example.com/mcp
-    oauth: true
+    url: https://example.com/sse
 
   docs:
     transport: stdio

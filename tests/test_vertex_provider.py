@@ -1,6 +1,7 @@
 import json
 
 import httpx
+import pytest
 
 from app.llm.base import ChatMessage
 from app.llm.vertex import DEFAULT_VERTEX_AI_SCOPE, VertexAIProvider, service_account
@@ -22,6 +23,7 @@ def test_vertex_provider_chat_uses_vertex_openai_endpoint_and_refreshed_token() 
     credentials = FakeCredentials()
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "aiplatform.googleapis.com"
         assert request.url.path == "/v1/projects/test-project/locations/global/endpoints/openapi/chat/completions"
         assert request.headers["Authorization"] == "Bearer fresh-token"
         payload = json.loads(request.content.decode("utf-8"))
@@ -64,6 +66,7 @@ def test_vertex_provider_stream_chat_emits_chunks() -> None:
     stream = "\n".join(f"data: {json.dumps(chunk)}" for chunk in payload_chunks) + "\n\ndata: [DONE]\n"
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "us-central1-aiplatform.googleapis.com"
         assert request.url.path == "/v1/projects/test-project/locations/us-central1/endpoints/openapi/chat/completions"
         assert request.headers["Authorization"] == "Bearer ready-token"
         return httpx.Response(200, content=stream.encode("utf-8"), headers={"content-type": "text/event-stream"})
@@ -127,3 +130,8 @@ def test_vertex_provider_falls_back_to_application_default_credentials(monkeypat
     provider = VertexAIProvider(project="test-project")
 
     assert provider._access_token() == "adc-token"
+
+
+def test_vertex_provider_rejects_incomplete_region_name() -> None:
+    with pytest.raises(ValueError, match="europe-west1"):
+        VertexAIProvider(project="test-project", location="europe-west")

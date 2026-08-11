@@ -221,6 +221,7 @@ __marimo__/
 .chainlit/
 
 # Local environment and build artifacts
+mcp-servers.yaml
 mcp-workbench/
 data/
 .DS_Store
