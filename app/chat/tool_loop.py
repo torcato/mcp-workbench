@@ -48,7 +48,7 @@ class ChatToolLoop:
         provider: LLMProvider,
         mcp_manager: MCPManager,
         approval_policy: ToolApprovalPolicy | None = None,
-        max_tool_iterations: int = 5,
+        max_tool_iterations: int = 25,
         tool_execution_callback: Callable[[MCPToolExecution], Awaitable[None]] | None = None,
     ) -> None:
         if max_tool_iterations < 1:
